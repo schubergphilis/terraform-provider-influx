@@ -12,7 +12,6 @@ fmtcheck:
 test: fmtcheck
 	go test $(TEST) -timeout=30s -parallel=4
 
-
 test-compile:
 	@if [ "$(TEST)" = "./..." ]; then \
 		echo "ERROR: Set TEST to a specific package. For example,"; \

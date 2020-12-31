@@ -1,0 +1,38 @@
+---
+name: CI
+
+on:
+  pull_request:
+
+jobs:
+  fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@master
+      - name: Setup Go env
+        uses: actions/setup-go@v1
+        with:
+          go-version: "1.13.6"
+      - name: Run fmtcheck
+        run: make fmtcheck
+
+  testacc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@master
+      - name: Setup Go env
+        uses: actions/setup-go@v1
+        with:
+          go-version: "1.13.6"
+      - name: Run acceptance tests
+        run: make testacc
+    env:
+      O365_ACL_GUID: ${{ secrets.O365_ACL_GUID }}
+      O365_ALIAS: ${{ secrets.O365_ALIAS }}
+      O365_EXOAPI_ENDPOINT: ${{ secrets.O365_EXOAPI_ENDPOINT }}
+      O365_GROUP_ID: ${{ secrets.O365_GROUP_ID }}
+      O365_GROUP_SMTP: ${{ secrets.O365_GROUP_SMTP }}
+      O365_GROUP_TLA: ${{ secrets.O365_GROUP_TLA }}
+      O365_SECRET_CODE: ${{ secrets.O365_SECRET_CODE }}
