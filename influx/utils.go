@@ -11,3 +11,7 @@ func getInfluxClientFromMetadata(meta interface{}) influxdb2.Client {
 func getInfluxOrgFromMetadata(meta interface{}) string {
 	return meta.(*Config).org
 }
+
+func getInfluxTokenFromMetadata(meta interface{}) string {
+	return meta.(*Config).token
+}
