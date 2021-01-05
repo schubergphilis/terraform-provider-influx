@@ -145,6 +145,7 @@ func resourceAuthorizationRead(ctx context.Context, d *schema.ResourceData, m in
 	for _, a := range *authorizations {
 		if *a.Id == d.Id() {
 			authorization = &a
+			break
 		}
 	}
 
