@@ -1,8 +1,13 @@
 package influx
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
@@ -20,6 +25,14 @@ func resourceBucket() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+			"dbrp_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"org_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"name": {
 				Type:        schema.TypeString,
 				Required:    true,
@@ -30,10 +43,10 @@ func resourceBucket() *schema.Resource {
 				Optional:    true,
 				Description: "The description of the bucket",
 			},
-			"retention": {
+			"retention_days": {
 				Type:        schema.TypeInt,
 				Optional:    true,
-				Description: "Retention time of the data in seconds",
+				Description: "Retention time of the data in days",
 			},
 		},
 	}
@@ -55,10 +68,12 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 		RetentionRules: []domain.RetentionRule{},
 	}
 
-	if r, ok := d.GetOk("retention"); ok {
+	ret := "inf"
+	if r, ok := d.GetOk("retention_days"); ok {
 		bucket.RetentionRules = append(bucket.RetentionRules, domain.RetentionRule{
-			EverySeconds: r.(int),
+			EverySeconds: r.(int) * 24 * 60 * 60,
 		})
+		ret = fmt.Sprintf("%ddays", r.(int))
 	}
 
 	resp, err := api.BucketsAPI().CreateBucket(ctx, &bucket)
@@ -67,6 +82,44 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	}
 
 	d.SetId(*resp.Id)
+
+	body, err := json.Marshal(map[string]interface{}{
+		"bucketID":         *resp.Id,
+		"database":         name,
+		"default":          true,
+		"orgID":            *resp.OrgID,
+		"retention_policy": ret,
+	})
+	if err != nil {
+		return diag.Errorf("failed to create rp mapping body: %v", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("POST",
+		fmt.Sprintf("%sdbrps?orgID=%s", api.HTTPService().ServerAPIURL(), *resp.OrgID),
+		bytes.NewReader(body))
+
+	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
+	req.Header.Add("Content-type", "application/json")
+
+	mappingResp, err := client.Do(req)
+	if err != nil {
+		cleanErr := resourceBucketDelete(ctx, d, m)
+		if cleanErr != nil {
+			return diag.Errorf("failed bucket cleanup: %v: err", cleanErr)
+		}
+		return diag.Errorf("failed during create rp mapping request: %v", err)
+	}
+
+	respBody, _ := ioutil.ReadAll(mappingResp.Body)
+
+	if mappingResp.StatusCode != 201 {
+		cleanErr := resourceBucketDelete(ctx, d, m)
+		if cleanErr != nil {
+			return diag.Errorf("failed bucket cleanup: %v: err", cleanErr)
+		}
+		return diag.Errorf("failed during create rp mapping request: %v", string(respBody))
+	}
 
 	return resourceBucketRead(ctx, d, m)
 }
@@ -86,12 +139,19 @@ func resourceBucketRead(ctx context.Context, d *schema.ResourceData, m interface
 		return nil
 	}
 
-	_ = d.Set("name", bucket.Name)
-	_ = d.Set("description", bucket.Description)
+	rpID, err := getMappingID(ctx, d, m)
+	if err != nil {
+		return diag.Errorf("no database retention policy id found: %v", err)
+	}
 
-	d.Set("retention", 0)
+	_ = d.Set("name", bucket.Name)
+	_ = d.Set("dbrp_id", rpID)
+	_ = d.Set("description", bucket.Description)
+	_ = d.Set("org_id", bucket.OrgID)
+
+	d.Set("retention_days", 0)
 	if len(bucket.RetentionRules) > 0 {
-		d.Set("retention", bucket.RetentionRules[0].EverySeconds)
+		d.Set("retention_days", bucket.RetentionRules[0].EverySeconds/24/60/60)
 	}
 
 	return nil
@@ -106,6 +166,8 @@ func resourceBucketUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 
 	name := d.Get("name").(string)
 	description := d.Get("description").(string)
+	orgID := d.Get("org_id").(string)
+	dbrpID := d.Get("dbrp_id").(string)
 
 	bucket := domain.Bucket{
 		Id:             &id,
@@ -115,15 +177,43 @@ func resourceBucketUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 		RetentionRules: []domain.RetentionRule{},
 	}
 
-	if r, ok := d.GetOk("retention"); ok {
+	ret := "inf"
+	if r, ok := d.GetOk("retention_days"); ok {
 		bucket.RetentionRules = append(bucket.RetentionRules, domain.RetentionRule{
-			EverySeconds: r.(int),
+			EverySeconds: r.(int) * 24 * 60 * 60,
 		})
+		ret = fmt.Sprintf("%ddays", r.(int))
 	}
 
 	_, err := api.BucketsAPI().UpdateBucket(ctx, &bucket)
 	if err != nil {
-		return diag.Errorf("failed to create bucket: %v", err)
+		return diag.Errorf("failed to update bucket: %v", err)
+	}
+
+	body, err := json.Marshal(map[string]interface{}{
+		"retention_policy": ret,
+	})
+	if err != nil {
+		return diag.Errorf("failed to update rp mapping body: %v", err)
+	}
+
+	client := &http.Client{}
+	req, err := http.NewRequest("PATCH",
+		fmt.Sprintf("%sdbrps/%s?orgID=%s", api.HTTPService().ServerAPIURL(), dbrpID, orgID),
+		bytes.NewReader(body))
+
+	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
+	req.Header.Add("Content-type", "application/json")
+
+	mappingResp, err := client.Do(req)
+	if err != nil {
+		return diag.Errorf("failed during update rp mapping request: %v", err)
+	}
+
+	respBody, _ := ioutil.ReadAll(mappingResp.Body)
+
+	if mappingResp.StatusCode != 200 {
+		return diag.Errorf("failed during update rp mapping request: %v", string(respBody))
 	}
 
 	return resourceBucketRead(ctx, d, m)
@@ -139,5 +229,53 @@ func resourceBucketDelete(ctx context.Context, d *schema.ResourceData, m interfa
 		return diag.Errorf("failed to delete bucket: %v", err)
 	}
 
+	url := fmt.Sprintf("%sdbrps/%s?orgID=%s", api.HTTPService().ServerAPIURL(), d.Get("dbrp_id").(string), d.Get("org_id").(string))
+	client := &http.Client{}
+	req, err := http.NewRequest("DELETE", url, nil)
+
+	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
+
+	_, err = client.Do(req)
+	if err != nil {
+		return diag.Errorf("failed to delete rp mapping: %v", err)
+	}
+
 	return nil
+}
+
+func getMappingID(ctx context.Context, d *schema.ResourceData, m interface{}) (string, error) {
+	api := getInfluxClientFromMetadata(m)
+
+	url := fmt.Sprintf("%sdbrps/?orgID=%s&bucketID=%s", api.HTTPService().ServerAPIURL(), d.Get("org_id"), d.Id())
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", url, nil)
+
+	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("failed during create rp mapping request: %v", err)
+	}
+
+	respBody, _ := ioutil.ReadAll(resp.Body)
+	if resp.StatusCode != 200 {
+		return "", fmt.Errorf("failed during create rp mapping request: %v", string(respBody))
+	}
+
+	respData := map[string]interface{}{}
+	err = json.Unmarshal(respBody, &respData)
+	if err != nil {
+		return "", fmt.Errorf("unable to parse mapping json response: %v", err)
+	}
+
+	if content, ok := respData["content"]; ok {
+		results := content.([]interface{})
+		if len(results) > 0 {
+			if id, ok := results[0].(map[string]interface{})["id"]; ok {
+				return id.(string), nil
+			}
+		}
+	}
+
+	return "", fmt.Errorf("no mapping id found")
 }

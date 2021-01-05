@@ -20,6 +20,10 @@ func resourceAuthorization() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+			"org_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
 			"host": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -167,6 +171,7 @@ func resourceAuthorizationRead(ctx context.Context, d *schema.ResourceData, m in
 
 	_ = d.Set("host", api.ServerURL())
 	_ = d.Set("name", authorization.Description)
+	_ = d.Set("org_id", authorization.OrgID)
 	_ = d.Set("organization", authorization.Org)
 	_ = d.Set("permission", permissions)
 	_ = d.Set("status", authorization.Status)
