@@ -20,11 +20,17 @@ func resourceAuthorization() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"org": {
+			"host": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"url": {
+			"name": {
+				Type:        schema.TypeString,
+				Required:    true,
+				ForceNew:    true,
+				Description: "The name of the authorization",
+			},
+			"organization": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -32,12 +38,6 @@ func resourceAuthorization() *schema.Resource {
 				Type:      schema.TypeString,
 				Computed:  true,
 				Sensitive: true,
-			},
-			"name": {
-				Type:        schema.TypeString,
-				Required:    true,
-				ForceNew:    true,
-				Description: "The name of the authorization",
 			},
 			"status": {
 				Type:        schema.TypeString,
@@ -164,12 +164,12 @@ func resourceAuthorizationRead(ctx context.Context, d *schema.ResourceData, m in
 		}
 	}
 
+	_ = d.Set("host", api.ServerURL())
 	_ = d.Set("name", authorization.Description)
-	_ = d.Set("org", authorization.Org)
+	_ = d.Set("organization", authorization.Org)
 	_ = d.Set("permission", permissions)
 	_ = d.Set("status", authorization.Status)
 	_ = d.Set("token", authorization.Token)
-	_ = d.Set("url", api.ServerURL())
 
 	return nil
 }
