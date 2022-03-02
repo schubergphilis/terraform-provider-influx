@@ -71,7 +71,7 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	ret := "inf"
 	if r, ok := d.GetOk("retention_days"); ok {
 		bucket.RetentionRules = append(bucket.RetentionRules, domain.RetentionRule{
-			EverySeconds: r.(int) * 24 * 60 * 60,
+			EverySeconds: r.(int64) * 24 * 60 * 60,
 		})
 		ret = fmt.Sprintf("%ddays", r.(int))
 	}
@@ -180,7 +180,7 @@ func resourceBucketUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 	ret := "inf"
 	if r, ok := d.GetOk("retention_days"); ok {
 		bucket.RetentionRules = append(bucket.RetentionRules, domain.RetentionRule{
-			EverySeconds: r.(int) * 24 * 60 * 60,
+			EverySeconds: r.(int64) * 24 * 60 * 60,
 		})
 		ret = fmt.Sprintf("%ddays", r.(int))
 	}

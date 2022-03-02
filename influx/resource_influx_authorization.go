@@ -130,6 +130,7 @@ func resourceAuthorizationCreate(ctx context.Context, d *schema.ResourceData, m 
 	}
 
 	d.SetId(*resp.Id)
+	_ = d.Set("token", *resp.Token)
 
 	return resourceAuthorizationRead(ctx, d, m)
 }
@@ -175,7 +176,6 @@ func resourceAuthorizationRead(ctx context.Context, d *schema.ResourceData, m in
 	_ = d.Set("organization", authorization.Org)
 	_ = d.Set("permission", permissions)
 	_ = d.Set("status", authorization.Status)
-	_ = d.Set("token", authorization.Token)
 
 	return nil
 }
