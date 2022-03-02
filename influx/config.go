@@ -25,11 +25,6 @@ func (c *Config) loadAndValidate() error {
 
 	client := influxdb2.NewClientWithOptions(c.url, c.token, options)
 
-	_, err := client.Health(context.Background())
-	if err != nil {
-		return err
-	}
-
 	res, err := client.OrganizationsAPI().GetOrganizations(context.Background())
 	if err != nil {
 		return err
