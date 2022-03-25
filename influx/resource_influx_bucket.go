@@ -71,7 +71,7 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	ret := "inf"
 	if r, ok := d.GetOk("retention_days"); ok {
 		bucket.RetentionRules = append(bucket.RetentionRules, domain.RetentionRule{
-			EverySeconds: r.(int64) * 24 * 60 * 60,
+			EverySeconds: int64(r.(int) * 24 * 60 * 60),
 		})
 		ret = fmt.Sprintf("%ddays", r.(int))
 	}
@@ -98,6 +98,9 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	req, err := http.NewRequest("POST",
 		fmt.Sprintf("%sdbrps?orgID=%s", api.HTTPService().ServerAPIURL(), *resp.OrgID),
 		bytes.NewReader(body))
+	if err != nil {
+		return diag.Errorf("failed to create request: %v", err)
+	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
 	req.Header.Add("Content-type", "application/json")
@@ -106,7 +109,7 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	if err != nil {
 		cleanErr := resourceBucketDelete(ctx, d, m)
 		if cleanErr != nil {
-			return diag.Errorf("failed bucket cleanup: %v: err", cleanErr)
+			return diag.Errorf("failed bucket cleanup: %v", cleanErr)
 		}
 		return diag.Errorf("failed during create rp mapping request: %v", err)
 	}
@@ -116,7 +119,7 @@ func resourceBucketCreate(ctx context.Context, d *schema.ResourceData, m interfa
 	if mappingResp.StatusCode != 201 {
 		cleanErr := resourceBucketDelete(ctx, d, m)
 		if cleanErr != nil {
-			return diag.Errorf("failed bucket cleanup: %v: err", cleanErr)
+			return diag.Errorf("failed bucket cleanup: %v", cleanErr)
 		}
 		return diag.Errorf("failed during create rp mapping request: %v", string(respBody))
 	}
@@ -180,7 +183,7 @@ func resourceBucketUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 	ret := "inf"
 	if r, ok := d.GetOk("retention_days"); ok {
 		bucket.RetentionRules = append(bucket.RetentionRules, domain.RetentionRule{
-			EverySeconds: r.(int64) * 24 * 60 * 60,
+			EverySeconds: int64(r.(int) * 24 * 60 * 60),
 		})
 		ret = fmt.Sprintf("%ddays", r.(int))
 	}
@@ -201,6 +204,9 @@ func resourceBucketUpdate(ctx context.Context, d *schema.ResourceData, m interfa
 	req, err := http.NewRequest("PATCH",
 		fmt.Sprintf("%sdbrps/%s?orgID=%s", api.HTTPService().ServerAPIURL(), dbrpID, orgID),
 		bytes.NewReader(body))
+	if err != nil {
+		return diag.Errorf("failed to create request: %v", err)
+	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
 	req.Header.Add("Content-type", "application/json")
@@ -232,6 +238,9 @@ func resourceBucketDelete(ctx context.Context, d *schema.ResourceData, m interfa
 	url := fmt.Sprintf("%sdbrps/%s?orgID=%s", api.HTTPService().ServerAPIURL(), d.Get("dbrp_id").(string), d.Get("org_id").(string))
 	client := &http.Client{}
 	req, err := http.NewRequest("DELETE", url, nil)
+	if err != nil {
+		return diag.Errorf("failed to create request: %v", err)
+	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
 
@@ -249,6 +258,9 @@ func getMappingID(ctx context.Context, d *schema.ResourceData, m interface{}) (s
 	url := fmt.Sprintf("%sdbrps/?orgID=%s&bucketID=%s", api.HTTPService().ServerAPIURL(), d.Get("org_id"), d.Id())
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %v", err)
+	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Token %s", getInfluxTokenFromMetadata(m)))
 
