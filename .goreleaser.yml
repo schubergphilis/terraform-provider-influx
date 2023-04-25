@@ -17,6 +17,10 @@ builds:
       - darwin
     goarch:
       - amd64
+      - arm64      
+    ignore:
+      - goarch: arm64
+        goos: windows      
     binary: "{{ .ProjectName }}_{{ .Version }}"
 archives:
   - format: zip
